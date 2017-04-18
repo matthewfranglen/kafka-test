@@ -55,8 +55,16 @@ public class KafkaTestConfiguration {
     }
 
     @Bean
-    @Scope("prototype")
-    public ThreadPoolTaskExecutor pool() {
+    public ThreadPoolTaskExecutor producers() {
+        ThreadPoolTaskExecutor pool = new ThreadPoolTaskExecutor();
+        pool.setCorePoolSize(4);
+        pool.setMaxPoolSize(4);
+
+        return pool;
+    }
+
+    @Bean
+    public ThreadPoolTaskExecutor consumers() {
         ThreadPoolTaskExecutor pool = new ThreadPoolTaskExecutor();
         pool.setCorePoolSize(4);
         pool.setMaxPoolSize(4);

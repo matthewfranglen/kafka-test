@@ -33,7 +33,7 @@ public class KafkaTestApplication implements ApplicationContextAware, CommandLin
     }
 
     private void makeConsumers() {
-        ThreadPoolTaskExecutor pool = getPool();
+        ThreadPoolTaskExecutor pool = (ThreadPoolTaskExecutor) context.getBean("consumers");
 
         IntStream.range(1, 5)
             .mapToObj(this::toConsumer)
@@ -41,15 +41,11 @@ public class KafkaTestApplication implements ApplicationContextAware, CommandLin
     }
 
     private void makeProducers() {
-        ThreadPoolTaskExecutor pool = getPool();
+        ThreadPoolTaskExecutor pool = (ThreadPoolTaskExecutor) context.getBean("producers");
 
         IntStream.range(1, 5)
             .mapToObj(this::toProducer)
             .forEach(pool::execute);
-    }
-
-    private ThreadPoolTaskExecutor getPool() {
-        return (ThreadPoolTaskExecutor) context.getBean("pool");
     }
 
     private Runnable toConsumer(int v) {
