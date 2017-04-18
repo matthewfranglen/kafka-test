@@ -1,8 +1,13 @@
 package com.matthew.services;
 
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,9 +34,19 @@ public class Reader<K, V> {
     }
 
     private void read(int count) {
-        IntStream.range(0, count).forEach(reader::poll);
+        IntStream.range(0, count)
+            .forEach(reader::poll);
 
-        logger.info("{} - read {} messages", Thread.currentThread().getName(), count);
+        Map<Integer, Long> offsets = reader.assignment().stream()
+            .collect(Collectors.toMap(TopicPartition::partition, this::getOffset));
+
+        logger.info("{} - read  {}: {}", Thread.currentThread().getName(), count, offsets);
+    }
+
+    private long getOffset(TopicPartition partition) {
+        return Optional.ofNullable(reader.committed(partition))
+            .map(OffsetAndMetadata::offset)
+            .orElse(0L);
     }
 
 }
