@@ -17,7 +17,9 @@ public class KafkaTestApplication implements ApplicationContextAware, CommandLin
 
     private ApplicationContext context;
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws InterruptedException {
+        Thread.sleep(10_000); // Wait for kafka. This isn't the worst thing you'll see today.
+
         SpringApplication.run(KafkaTestApplication.class, args);
     }
 

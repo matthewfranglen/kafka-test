@@ -1,0 +1,14 @@
+version: '2'
+
+services:
+  kafka:
+    image: "spotify/kafka"
+    environment:
+      - "NUM_PARTITIONS=24"
+      - "AUTO_CREATE_TOPICS=true"
+  java:
+    image: "com.matthew/kafka-test"
+    depends_on:
+      - kafka
+    links:
+      - kafka
