@@ -13,16 +13,17 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Scope;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
-import com.matthew.dto.Message;
 import com.matthew.services.Reader;
 import com.matthew.services.Writer;
 
 @Configuration
 public class KafkaTestConfiguration {
 
+    public static final String MESSAGE = "The Magic Words are Squeamish Ossifrage";
+
     @Bean
     @Scope("prototype")
-    public Writer<?, Message> producer(
+    public Writer<?, String> producer(
             @Value("${kafka.server}") String server,
             @Value("${kafka.topic}") String topic
     ) {
@@ -31,12 +32,12 @@ public class KafkaTestConfiguration {
         properties.put("key.serializer", StringSerializer.class.getName());
         properties.put("value.serializer", StringSerializer.class.getName());
 
-        return new Writer<>(new KafkaProducer<>(properties), topic, Message.MESSAGE);
+        return new Writer<>(new KafkaProducer<>(properties), topic, MESSAGE);
     }
 
     @Bean
     @Scope("prototype")
-    public Reader<?, Message> consumer(
+    public Reader<?, String> consumer(
             @Value("${kafka.server}") String server,
             @Value("${kafka.topic}") String topic,
             @Value("${kafka.consumerGroup}") String consumerGroup
@@ -47,7 +48,7 @@ public class KafkaTestConfiguration {
         properties.put("key.deserializer", StringDeserializer.class.getName());
         properties.put("value.deserializer", StringDeserializer.class.getName());
 
-        KafkaConsumer<?, Message> consumer = new KafkaConsumer<>(properties);
+        KafkaConsumer<?, String> consumer = new KafkaConsumer<>(properties);
         consumer.subscribe(Collections.singletonList(topic));
 
         return new Reader<>(consumer);
