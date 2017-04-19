@@ -84,7 +84,7 @@ public class KafkaTestApplication implements CommandLineRunner {
     }
 
     private List<String> makeMessages() {
-        return IntStream.range(0, 10)
+        return IntStream.range(0, 1000)
                 .mapToObj(v -> String.format("Message - %05d", v))
                 .sorted()
                 .collect(toList());
