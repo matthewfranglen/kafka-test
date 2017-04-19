@@ -30,7 +30,40 @@ public class KafkaTestConfiguration {
     }
 
     @Bean
-    public Reader consumer(
+    public Reader consumerOne(
+            @Value("${kafka.server}") String server,
+            @Value("${kafka.topic}") String topic,
+            @Value("${kafka.consumerGroup}") String consumerGroup
+    ) {
+        logger.info("Creating Reader: {}, {}, {}", server, topic, consumerGroup);
+
+        return new Reader(server, topic, consumerGroup);
+    }
+
+    @Bean
+    public Reader consumerTwo(
+            @Value("${kafka.server}") String server,
+            @Value("${kafka.topic}") String topic,
+            @Value("${kafka.consumerGroup}") String consumerGroup
+    ) {
+        logger.info("Creating Reader: {}, {}, {}", server, topic, consumerGroup);
+
+        return new Reader(server, topic, consumerGroup);
+    }
+
+    @Bean
+    public Reader consumerThree(
+            @Value("${kafka.server}") String server,
+            @Value("${kafka.topic}") String topic,
+            @Value("${kafka.consumerGroup}") String consumerGroup
+    ) {
+        logger.info("Creating Reader: {}, {}, {}", server, topic, consumerGroup);
+
+        return new Reader(server, topic, consumerGroup);
+    }
+
+    @Bean
+    public Reader consumerFour(
             @Value("${kafka.server}") String server,
             @Value("${kafka.topic}") String topic,
             @Value("${kafka.consumerGroup}") String consumerGroup
@@ -53,7 +86,7 @@ public class KafkaTestConfiguration {
 
     @Bean
     public ThreadPoolExecutor executor() {
-        return new ThreadPoolExecutor(4, 4, 1_000, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
+        return new ThreadPoolExecutor(6, 6, 1_000, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
     }
 
 }
