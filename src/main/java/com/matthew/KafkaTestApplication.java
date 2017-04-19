@@ -1,11 +1,13 @@
 package com.matthew;
 
 import static java.util.stream.Collectors.toList;
+
 import static org.hamcrest.Matchers.equalTo;
 import static org.junit.Assert.assertThat;
 
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -57,16 +59,27 @@ public class KafkaTestApplication implements CommandLineRunner {
 
             printLag();
 
+            logger.info("Reading all old messages...");
+            drainAll().get();
+            printLag();
+
+            logger.info("Writing messages...");
             writeMessages(messages).get();
             printLag();
 
+            logger.info("Read from first partition...");
             List<String> firstReadMessages = drainFirstPartition().get();
             printLag();
 
+            logger.info("Read from all partitions...");
             List<String> remainingMessages = drainRemainingPartitions().get();
             printLag();
 
+            logger.info("Test messages...");
             compareMessages(messages, firstReadMessages, remainingMessages);
+
+            logger.info("Test passed!");
+            System.exit(0);
         } catch (Exception e) {}
     }
 
@@ -85,16 +98,27 @@ public class KafkaTestApplication implements CommandLineRunner {
         return writer.write(messages);
     }
 
+    private CompletableFuture<List<String>> drainAll() {
+        return drain(readers.stream());
+    }
+
     private CompletableFuture<List<String>> drainFirstPartition() {
         return readers.get(0).drain(executor);
     }
 
-    @SuppressWarnings("unchecked")
     private CompletableFuture<List<String>> drainRemainingPartitions() {
-        CompletableFuture<List<String>>[] futures = readers.stream()
-            .skip(1)
+        return drain(readers.stream().skip(1));
+    }
+
+    @SuppressWarnings("unchecked")
+    private CompletableFuture<List<String>> drain(Stream<Reader> readers) {
+        CompletableFuture<List<String>>[] futures = readers
             .map(reader -> reader.drain(executor))
             .toArray(size -> new CompletableFuture[size]);
+
+        if (futures.length == 0) {
+            return CompletableFuture.completedFuture(Collections.emptyList());
+        }
 
         return CompletableFuture.allOf(futures)
             .thenApply(v ->
