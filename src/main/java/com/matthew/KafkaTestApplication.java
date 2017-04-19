@@ -1,63 +1,127 @@
 package com.matthew;
 
-import java.util.stream.IntStream;
+import static java.util.stream.Collectors.toList;
+import static org.hamcrest.Matchers.equalTo;
+import static org.junit.Assert.assertThat;
 
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
+
+import org.apache.kafka.clients.producer.RecordMetadata;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.ApplicationContextAware;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
+import com.matthew.services.Monitor;
 import com.matthew.services.Reader;
 import com.matthew.services.Writer;
 
 @SpringBootApplication
-public class KafkaTestApplication implements ApplicationContextAware, CommandLineRunner {
+public class KafkaTestApplication implements CommandLineRunner {
 
-    private ApplicationContext context;
+    private final Logger logger = LoggerFactory.getLogger(getClass());
 
-    public static void main(String[] args) throws InterruptedException {
-        Thread.sleep(10_000); // Wait for kafka. This isn't the worst thing you'll see today.
+    @Autowired
+    private Writer writer;
 
+    @Autowired
+    private List<Reader> readers;
+
+    @Autowired
+    private Monitor monitor;
+
+    @Autowired
+    private ThreadPoolExecutor executor;
+
+    public static void main(String[] args) {
         SpringApplication.run(KafkaTestApplication.class, args);
     }
 
-    public void setApplicationContext(ApplicationContext context) {
-        this.context = context;
+    public void run(String... args) throws Exception {
+        executor.execute(this::run);
     }
 
-    public void run(String... args) {
-        makeConsumers();
-        makeProducers();
+    private void run() {
+        try {
+            Thread.sleep(1_000);
+
+            List<String> messages = makeMessages();
+
+            printLag();
+
+            writeMessages(messages).get();
+            printLag();
+
+            List<String> firstReadMessages = drainFirstPartition().get();
+            printLag();
+
+            List<String> remainingMessages = drainRemainingPartitions().get();
+            printLag();
+
+            compareMessages(messages, firstReadMessages, remainingMessages);
+        } catch (Exception e) {}
     }
 
-    private void makeConsumers() {
-        ThreadPoolTaskExecutor pool = (ThreadPoolTaskExecutor) context.getBean("consumers");
-
-        IntStream.range(1, 5)
-            .mapToObj(this::toConsumer)
-            .forEach(pool::execute);
+    private List<String> makeMessages() {
+        return IntStream.range(0, 10)
+                .mapToObj(v -> String.format("Message - %05d", v))
+                .sorted()
+                .collect(toList());
     }
 
-    private void makeProducers() {
-        ThreadPoolTaskExecutor pool = (ThreadPoolTaskExecutor) context.getBean("producers");
-
-        IntStream.range(1, 5)
-            .mapToObj(this::toProducer)
-            .forEach(pool::execute);
+    private void printLag() {
+        logger.info("Lag: {}", monitor.getPartitionLag());
     }
 
-    private Runnable toConsumer(int v) {
-        Reader<?, ?> reader = (Reader<?, ?>) context.getBean("consumer");
-
-        return () -> reader.run(v * 10, 10_000 - (v * 1_000));
+    private CompletableFuture<List<RecordMetadata>> writeMessages(List<String> messages) throws InterruptedException {
+        return writer.write(messages);
     }
 
-    private Runnable toProducer(int v) {
-        Writer<?, ?> writer = (Writer<?, ?>) context.getBean("producer");
+    private CompletableFuture<List<String>> drainFirstPartition() {
+        return readers.get(0).drain(executor);
+    }
 
-        return () -> writer.run(v * 10, 10_000 - (v * 1_000));
+    @SuppressWarnings("unchecked")
+    private CompletableFuture<List<String>> drainRemainingPartitions() {
+        CompletableFuture<List<String>>[] futures = readers.stream()
+            .skip(1)
+            .map(reader -> reader.drain(executor))
+            .toArray(size -> new CompletableFuture[size]);
+
+        return CompletableFuture.allOf(futures)
+            .thenApply(v ->
+                Arrays.stream(futures)
+                    .map(this::getQuietly)
+                    .map(Collection.class::cast)
+                    .flatMap(Collection::stream)
+                    .map(String.class::cast)
+                    .collect(toList())
+            );
+    }
+
+    private void compareMessages(Collection<String> expected, List<String> first, List<String> remaining) {
+        Collection<String> combined = Stream.of(first, remaining)
+            .flatMap(Collection::stream)
+            .sorted()
+            .collect(toList());
+
+        assertThat(combined, equalTo(expected));
+    }
+
+    private <T> T getQuietly(CompletableFuture<T> future) {
+        try {
+            return future.get();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
 }

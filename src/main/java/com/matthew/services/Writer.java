@@ -1,81 +1,72 @@
 package com.matthew.services;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
+import static java.util.stream.Collectors.toList;
+
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
 
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.kafka.common.serialization.StringSerializer;
 
-public class Writer<K, V> {
+public class Writer {
 
-    private static final Logger logger = LoggerFactory.getLogger(Writer.class);
+    private final KafkaProducer<String, String> producer;
+    private final String topic;
 
-    private final KafkaProducer<K, V> writer;
-    private final ProducerRecord<K, V> message;
+    public Writer(
+            String server,
+            String topic
+    ) {
+        Properties properties = new Properties();
+        properties.put("bootstrap.servers", server);
+        properties.put("key.serializer", StringSerializer.class.getName());
+        properties.put("value.serializer", StringSerializer.class.getName());
 
-    public Writer(KafkaProducer<K, V> writer, String topic, V message) {
-        this.writer = writer;
-        this.message = new ProducerRecord<>(topic, null, message);
+        producer = new KafkaProducer<>(properties);
+        this.topic = topic;
     }
 
-    public void run(int count, long delay) {
-        try {
-            while (true) {
-                write(count);
+    @SuppressWarnings("unchecked")
+    public CompletableFuture<List<RecordMetadata>> write(Collection<String> messages) throws InterruptedException {
+        CompletableFuture<RecordMetadata>[] result = (CompletableFuture<RecordMetadata>[])messages.stream()
+            .map(this::toRecord)
+            .map(this::send)
+            .toArray(size -> new CompletableFuture[size]);
 
-                Thread.sleep(delay);
+        return CompletableFuture.allOf(result)
+            .thenApply(v -> Arrays.stream(result)
+                    .map(this::getQuietly)
+                    .collect(toList())
+                );
+    }
+
+    private ProducerRecord<String, String> toRecord(String message) {
+        return new ProducerRecord<>(topic, null, message);
+    }
+
+    private CompletableFuture<RecordMetadata> send(ProducerRecord<String, String> message) {
+        CompletableFuture<RecordMetadata> result = new CompletableFuture<>();
+
+        producer.send(message, (record, exception) -> {
+            if (exception == null) {
+                result.complete(record);
+            } else {
+                result.completeExceptionally(exception);
             }
-        } catch (InterruptedException e){
-            Thread.currentThread().interrupt();
-        }
+        });
+
+        return result;
     }
 
-    private void write(int count) throws InterruptedException {
-        Map<Integer, Long> offsets = new HashMap<>();
-        IntStream.range(0, count)
-            .mapToObj(v -> message)
-            .map(writer::send)
-            .collect(Collectors.toList())
-            .stream()
-            .filter(this::hasValue)
-            .map(this::getValue)
-            .forEach(metadata -> {
-                if (offsets.getOrDefault(metadata.partition(), 0L) < metadata.offset()) {
-                    offsets.put(metadata.partition(), metadata.offset());
-                }
-            });
-
-        logger.info("{} - wrote {}: {}", Thread.currentThread().getName(), count, offsets);
-    }
-
-    private <T> boolean hasValue(Future<T> future) {
-        try {
-            future.get();
-
-            return true;
-        }
-        catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-        catch (ExecutionException e) {
-            logger.warn("{} - failed to write message", Thread.currentThread().getName(), e);
-        }
-
-        return false;
-    }
-
-    private <T> T getValue(Future<T> future) {
+    private <T> T getQuietly(CompletableFuture<T> future) {
         try {
             return future.get();
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }

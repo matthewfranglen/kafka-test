@@ -4,7 +4,7 @@ services:
   kafka:
     image: "spotify/kafka"
     environment:
-      - "NUM_PARTITIONS=24"
+      - "NUM_PARTITIONS=8"
       - "AUTO_CREATE_TOPICS=true"
   java:
     image: "com.matthew/kafka-test"

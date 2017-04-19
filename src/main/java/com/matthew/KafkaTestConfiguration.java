@@ -1,18 +1,14 @@
 package com.matthew;
 
-import java.util.Collections;
-import java.util.Properties;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
-import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.clients.producer.KafkaProducer;
-import org.apache.kafka.common.serialization.StringDeserializer;
-import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Scope;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
+import com.matthew.services.Monitor;
 import com.matthew.services.Reader;
 import com.matthew.services.Writer;
 
@@ -22,54 +18,34 @@ public class KafkaTestConfiguration {
     public static final String MESSAGE = "The Magic Words are Squeamish Ossifrage";
 
     @Bean
-    @Scope("prototype")
-    public Writer<?, String> producer(
+    public Writer writer(
             @Value("${kafka.server}") String server,
             @Value("${kafka.topic}") String topic
     ) {
-        Properties properties = new Properties();
-        properties.put("bootstrap.servers", server);
-        properties.put("key.serializer", StringSerializer.class.getName());
-        properties.put("value.serializer", StringSerializer.class.getName());
-
-        return new Writer<>(new KafkaProducer<>(properties), topic, MESSAGE);
+        return new Writer(server, topic);
     }
 
     @Bean
-    @Scope("prototype")
-    public Reader<?, String> consumer(
+    public Reader consumer(
             @Value("${kafka.server}") String server,
             @Value("${kafka.topic}") String topic,
             @Value("${kafka.consumerGroup}") String consumerGroup
     ) {
-        Properties properties = new Properties();
-        properties.put("bootstrap.servers", server);
-        properties.put("group.id", consumerGroup);
-        properties.put("key.deserializer", StringDeserializer.class.getName());
-        properties.put("value.deserializer", StringDeserializer.class.getName());
-
-        KafkaConsumer<?, String> consumer = new KafkaConsumer<>(properties);
-        consumer.subscribe(Collections.singletonList(topic));
-
-        return new Reader<>(consumer);
+        return new Reader(server, topic, consumerGroup);
     }
 
     @Bean
-    public ThreadPoolTaskExecutor producers() {
-        ThreadPoolTaskExecutor pool = new ThreadPoolTaskExecutor();
-        pool.setCorePoolSize(4);
-        pool.setMaxPoolSize(4);
-
-        return pool;
+    public Monitor monitor(
+            @Value("${kafka.server}") String server,
+            @Value("${kafka.topic}") String topic,
+            @Value("${kafka.consumerGroup}") String consumerGroup
+    ) {
+        return new Monitor(server, topic, consumerGroup);
     }
 
     @Bean
-    public ThreadPoolTaskExecutor consumers() {
-        ThreadPoolTaskExecutor pool = new ThreadPoolTaskExecutor();
-        pool.setCorePoolSize(4);
-        pool.setMaxPoolSize(4);
-
-        return pool;
+    public ThreadPoolExecutor executor() {
+        return new ThreadPoolExecutor(4, 4, 1_000, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
     }
 
 }

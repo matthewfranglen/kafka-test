@@ -1,52 +1,84 @@
 package com.matthew.services;
 
-import java.util.Map;
-import java.util.Optional;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Properties;
+import java.util.Queue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.stream.StreamSupport;
 
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.clients.consumer.OffsetAndMetadata;
-import org.apache.kafka.common.TopicPartition;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.kafka.common.serialization.StringDeserializer;
 
-public class Reader<K, V> {
+public class Reader {
 
-    private static final Logger logger = LoggerFactory.getLogger(Reader.class);
+    private final KafkaConsumer<String, String> consumer;
+    private final Queue<String> messages;
 
-    private final KafkaConsumer<K, V> reader;
+    public Reader(
+            String server,
+            String topic,
+            String consumerGroup
+    ) {
+        Properties properties = new Properties();
+        properties.put("bootstrap.servers", server);
+        properties.put("group.id", consumerGroup);
+        properties.put("key.deserializer", StringDeserializer.class.getName());
+        properties.put("value.deserializer", StringDeserializer.class.getName());
+        properties.put("max.poll.interval.ms", "60000");
+        properties.put("max.poll.records", "1");
 
-    public Reader(KafkaConsumer<K, V> reader) {
-        this.reader = reader;
+        consumer = new KafkaConsumer<>(properties);
+        consumer.subscribe(Collections.singletonList(topic));
+
+        messages = new LinkedList<>();
     }
 
-    public void run(int count, long delay) {
-        while (true) {
-            read(count);
+    public void commit() {
+        consumer.commitSync();
+    }
 
-            try {
-                Thread.sleep(delay);
-            } catch (InterruptedException e){
-                Thread.currentThread().interrupt();
+    public CompletableFuture<List<String>> drain(ThreadPoolExecutor executor) {
+        return CompletableFuture.supplyAsync(this::drain, executor);
+    }
+
+    private List<String> drain() {
+        int emptyReadCount = 0;
+
+        while (emptyReadCount < 10) {
+            if (! read()) {
+                emptyReadCount++;
             }
         }
+        commit();
+
+        List<String> result = new ArrayList<>();
+        String value;
+
+        while ((value = messages.poll()) != null) {
+            result.add(value);
+        }
+
+        return result;
     }
 
-    private void read(int count) {
-        IntStream.range(0, count)
-            .forEach(reader::poll);
+    private boolean read() {
+        ConsumerRecords<String, String> records = consumer.poll(100);
 
-        Map<Integer, Long> offsets = reader.assignment().stream()
-            .collect(Collectors.toMap(TopicPartition::partition, this::getOffset));
+        if (records.isEmpty()) {
+            return false;
+        }
 
-        logger.info("{} - read  {}: {}", Thread.currentThread().getName(), count, offsets);
-    }
+        StreamSupport.stream(records.spliterator(), false)
+            .map(ConsumerRecord::value)
+            .forEach(messages::add);
 
-    private long getOffset(TopicPartition partition) {
-        return Optional.ofNullable(reader.committed(partition))
-            .map(OffsetAndMetadata::offset)
-            .orElse(0L);
+        return true;
     }
 
 }
